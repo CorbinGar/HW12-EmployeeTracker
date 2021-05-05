@@ -1,8 +1,8 @@
 // dependencies
 const cTable = require('console.table');
 const inquirer = require('inquirer');
-const getConnections = require('//db/connection');
-
+const getConnections = require('./db/connection');
+let connection;
 
 
 
@@ -10,7 +10,7 @@ const getConnections = require('//db/connection');
 
 
 //main menu
-mainPrompt = async () => {
+mainMenu = async () => {
     const menu = await inquirer.prompt([
         {
             type: 'list',
@@ -43,7 +43,6 @@ mainPrompt = async () => {
             ]
         }
     ]);
-
     if (answer.action === 'exit') {
         await endProgram();
     }
@@ -53,7 +52,6 @@ mainPrompt = async () => {
         await functname();
         await mainPrompt();
     }
-
 
     return menu.action;
 }
@@ -107,4 +105,20 @@ const viewBudgets = async () => {
 
 }
 
+
+
+
+const endProgram = async () => {
+    await connection.end();
+};
+
+
+async function init() {
+    connection = await getConnection();
+    await mainMenu();
+};
+
 init();
+
+
+
