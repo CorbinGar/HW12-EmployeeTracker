@@ -4,13 +4,8 @@ const inquirer = require('inquirer');
 const getConnections = require('./db/connection');
 let connection;
 
-
-
-
-
-
 //main menu
-mainMenu = async () => {
+const mainMenu = async () => {
     const menu = await inquirer.prompt([
         {
             type: 'list',
@@ -19,15 +14,9 @@ mainMenu = async () => {
             choices: [
                 { name: 'View employees', value: viewEmployees },
 
-                { name: 'Add employee', value: insertEmployee },
+                { name: 'Add employee', value: addEmployee },
 
-                { name: 'Remove employee', value: deleteEmployee },
-
-                { name: 'Change employee role', value: changeEmployeeRole },
-
-                { name: 'Change employee manager', value: changeEmployeeManager },
-
-                { name: 'View employees by manager', value: viewEmployeesByManager },
+                { name: 'Change emplyee role', value: changeEmployeeRole },
 
                 { name: 'Add role', value: addRole },
 
@@ -43,24 +32,34 @@ mainMenu = async () => {
             ]
         }
     ]);
-    if (answer.action === 'exit') {
+    if (menu.action === 'exit') {
         await endProgram();
-    }
-    else {
-        const functname = answer.action;
+    }else{
+        const functname = menu.action;
         await functname();
-        await mainPrompt();
+        await mainMenu();
     }
-
     return menu.action;
 }
 
+// add all the queries first
+const queryRoles = async () => {
+    const [rows] = await connection.execute(
+        `SELECT r.id, r.title, r.salary, d.name department
+        FROM role r
+        JOIN department d ON r.department_id = d.id
+        ORDER BY r.id`);
+    return rows;
+}
 
+const queryDepartments = async () => {
+    const [rows] = await connection.execute(
+        `SELECT * FROM department
+        ORDER BY id`);
+    return rows;
+}
 
-
-
-
-const viewEmployees = async () => {
+const queryEmployees = async () => {
     const [rows] = await connection.execute(
         `SELECT e.id, e.first_name, e.last_name, r.title, d.name department, r.salary, CONCAT(m.first_name, " ", m.last_name)  manager
         FROM employee e
@@ -68,11 +67,20 @@ const viewEmployees = async () => {
         JOIN role r ON e.role_id = r.id
         JOIN department d ON r.department_id = d.id
         ORDER BY e.id`);
-
     return rows;
-}
+};
 
-const insertEmployee = async () => {
+
+
+
+// now onto the main functions
+const viewEmployees = async () => {
+    const rows = await queryEmployees();
+    console.table(rows);
+};
+
+const addEmployee = async () => {
+
     const roles = await queryRoles();
     if (roles.length === 0) {
         console.log('You must first create a role.');
@@ -111,24 +119,6 @@ const insertEmployee = async () => {
     console.log('Your employee was added successfully!');
 }
 
-const deleteEmployee = async () => {
-    const employees = await queryEmployees();
-    const answer = await inquirer.prompt([
-        {
-            name: 'employee_id',
-            type: 'list',
-            message: "Which employee would you like to remove?",
-            choices: employees.map(r => ({ name: r.first_name + " " + r.last_name, value: r.id }))
-        }
-    ]);
-    await connection.query(
-        'UPDATE employee SET manager_id = null WHERE id=?', [answer.employee_id]
-    );
-    await connection.query(
-        'DELETE FROM employee WHERE id=?', [answer.employee_id]
-    );
-    console.log('The employee was successfully removed!')
-}
 
 const changeEmployeeRole = async () => {
     const employees = await queryEmployees();
@@ -154,55 +144,6 @@ const changeEmployeeRole = async () => {
     console.log('The employee role was successfully updated!')
 }
 
-const changeEmployeeManager = async () => {
-    const employees = await queryEmployees();
-    const answer = await inquirer.prompt([
-        {
-            name: 'employee_id',
-            type: 'list',
-            message: "Which employee would you like to update?",
-            choices: employees.map(r => ({ name: r.first_name + " " + r.last_name, value: r.id }))
-        }
-    ]);
-    const allExceptSelectedEmp = employees
-        .filter(r => answer.employee_id !== r.id)
-        .map(r => ({ name: r.first_name + " " + r.last_name, value: r.id }));
-    const choices = [{ name: "none", value: null }].concat(allExceptSelectedEmp)
-    const answer2 = await inquirer.prompt([
-        {
-            name: 'manager_id',
-            type: 'list',
-            message: "Who is the employee's new manager?",
-            choices
-        }
-    ]);
-    await connection.query(
-        'UPDATE employee SET manager_id = ? WHERE id= ?',
-        [answer2.manager_id, answer.employee_id]
-    );
-    console.log("The employee's manager was successfully updated!")
-}
-
-const viewEmployeesByManager = async () => {
-    const [rows] = await connection.execute(
-        `SELECT DISTINCT m.id, m.first_name, m.last_name
-                FROM employee m
-                JOIN employee e ON m.id = e.manager_id
-                ORDER BY m.first_name;`
-    )
-    const answer = await inquirer.prompt([
-        {
-            name: 'manager_id',
-            type: 'list',
-            message: "Which manager's employees would you like to view?",
-            choices: rows.map(r => ({ name: r.first_name + " " + r.last_name, value: r.id }))
-        },
-    ]);
-    const [employees] = await connection.execute(
-        'SELECT e.id, e.first_name, e.last_name, r.title, d.name department, r.salary, CONCAT(m.first_name, " ", m.last_name)  manager FROM employee e   LEFT JOIN employee m ON e.manager_id = m.id JOIN role r ON e.role_id = r.id JOIN department d ON r.department_id = d.id WHERE e.manager_id = ? ORDER BY e.id', [answer.manager_id]
-    );
-    console.table(employees);
-}
 
 const addRole = async () => {
     const rows = await queryDepartments();
@@ -240,11 +181,8 @@ const addRole = async () => {
 };
 
 const viewRoles = async () => {
-    const [rows] = await connection.execute(
-        `SELECT * FROM department
-        ORDER BY id`);
-
-    return rows;
+    const rows = await queryRoles();
+    console.table(rows);
 }
 
 const addDepartment = async () => {
@@ -292,7 +230,7 @@ const endProgram = async () => {
 
 
 async function init() {
-    connection = await getConnection();
+    connection = await getConnections();
     await mainMenu();
 };
 
